@@ -88,7 +88,6 @@ pub struct InitConfig {
 /// * `output_traj` - Output file path for trajectory
 /// * `output_obs` - Output file path for observables
 /// * `stride` - Interval for writing output
-/// * `center_trajectory` - Flag to center trajectory on center of mass
 pub struct Config<'a> {
     pub init_config: &'a InitConfig,
     pub n_steps: usize,
@@ -96,5 +95,6 @@ pub struct Config<'a> {
     pub output_traj: &'a std::path::PathBuf,
     pub output_obs: &'a std::path::PathBuf,
     pub stride: usize,
-    pub center_trajectory: bool,
+    pub periodic: bool,
+    pub box_size: f32,
 }

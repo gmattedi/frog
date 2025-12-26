@@ -25,7 +25,8 @@ fn main() {
         n_steps: args.n_steps,
         stride: args.stride,
         burn_in: args.burn_in,
-        center_trajectory: args.center_trajectory,
+        periodic: args.periodic,
+        box_size: args.box_size,
     };
 
     let mut state = engine::init_system(&config.init_config);

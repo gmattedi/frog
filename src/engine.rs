@@ -18,6 +18,15 @@ pub(crate) fn morse_force_mag(r: f32) -> f32 {
     -2.0 * constants::MORSE_D * constants::MORSE_A * (1.0 - e) * e
 }
 
+/// Apply minimum image convention to a displacement vector for a cubic box
+pub(crate) fn minimum_image(diff: &Vector3<f32>, box_size: f32) -> Vector3<f32> {
+    Vector3::new(
+        diff[0] - box_size * (diff[0] / box_size).round(),
+        diff[1] - box_size * (diff[1] / box_size).round(),
+        diff[2] - box_size * (diff[2] / box_size).round(),
+    )
+}
+
 /// Initialize the system with random positions, velocities, and masses
 ///
 /// # Arguments
@@ -55,7 +64,11 @@ pub fn init_system(config: &schema::InitConfig) -> schema::State {
 ///
 /// # Returns
 /// The observables containing kinetic, potential, and total energy
-pub fn get_observables(state: &schema::State) -> schema::Observables {
+pub fn get_observables(
+    state: &schema::State,
+    periodic: bool,
+    box_size: f32,
+) -> schema::Observables {
     let mut kinetic_energy = 0.0;
     let mut potential_energy = 0.0;
     let n_particles = state.positions.ncols();
@@ -64,6 +77,7 @@ pub fn get_observables(state: &schema::State) -> schema::Observables {
     let mut positions_var = 0.0;
 
     for i in 0..n_particles {
+        let mut diff;
         // Kinetic energy: 0.5 * m * v^2
         let v = state.velocities.column(i);
         kinetic_energy += 0.5 * state.masses[i] * v.norm_squared();
@@ -72,7 +86,11 @@ pub fn get_observables(state: &schema::State) -> schema::Observables {
         let p_i = state.positions.column(i);
         for j in (i + 1)..n_particles {
             let p_j = state.positions.column(j);
-            let diff = p_j - p_i;
+            diff = p_j - p_i;
+            if periodic {
+                // minimum image convention
+                diff = minimum_image(&diff, box_size);
+            }
             let dist = diff.norm() + constants::EPS; // Avoid division by zero
             // Morse potential: V(r) = D * ( (1 - exp(-a*(r - r0)))^2 - 1 )
             potential_energy += morse_potential(dist);
@@ -96,7 +114,7 @@ pub fn get_observables(state: &schema::State) -> schema::Observables {
 ///
 /// # Arguments
 /// * `state` - The current state of the system
-pub fn step(state: &mut schema::State) {
+pub fn step(state: &mut schema::State, periodic: bool, box_size: f32) {
     let mut new_positions = state.positions.clone();
     let mut new_velocities = state.velocities.clone();
     let n_particles = state.positions.ncols();
@@ -109,7 +127,10 @@ pub fn step(state: &mut schema::State) {
         for j in 0..n_particles {
             if i != j {
                 let p_j = state.positions.column(j);
-                let diff = p_j - p_i;
+                let mut diff = p_j - p_i;
+                if periodic {
+                    diff = minimum_image(&diff, box_size);
+                }
                 let r = diff.norm() + constants::EPS;
 
                 let force_mag = morse_force_mag(r);
@@ -132,6 +153,12 @@ pub fn step(state: &mut schema::State) {
         .zip(new_velocities.column_iter())
     {
         pos_col.axpy(constants::DT, &vel_col, 1.0);
+        if periodic {
+            for k in 0..3 {
+                let x = pos_col[k];
+                pos_col[k] = x - box_size * (x / box_size).floor();
+            }
+        }
     }
 
     state.positions = new_positions;
@@ -163,8 +190,8 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
         has_header: false,
     };
 
-    let observables = get_observables(state);
-    io::write_state(state, 0, &mut output_traj, config.center_trajectory);
+    let observables = get_observables(state, config.periodic, config.box_size);
+    io::write_state(state, 0, &mut output_traj);
     io::write_observables(&observables, 0, &mut output_obs);
 
     let pbar = indicatif::ProgressBar::new(config.n_steps as u64);
@@ -178,12 +205,12 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
 
     for i in 1..=config.n_steps {
         if (i >= config.burn_in) && (i % config.stride == 0) {
-            io::write_state(state, i, &mut output_traj, config.center_trajectory);
-            let observables = get_observables(state);
+            io::write_state(state, i, &mut output_traj);
+            let observables = get_observables(state, config.periodic, config.box_size);
             pbar.set_message(format!("{}", observables));
             io::write_observables(&observables, i, &mut output_obs);
         }
-        step(state);
+        step(state, config.periodic, config.box_size);
         pbar.inc(1);
     }
     pbar.finish_with_message("Simulation complete");
@@ -226,7 +253,7 @@ mod tests {
             masses,
         };
 
-        let obs = get_observables(&state);
+        let obs = get_observables(&state, false, 10.0);
         let expected = morse_potential(r0);
         assert!((obs.kinetic).abs() < EPS_F, "Kinetic should be zero");
         assert!(
@@ -250,5 +277,16 @@ mod tests {
         assert!(f_less > 0.0, "Force should be repulsive for r < r0");
         // r > r0 -> attractive -> negative force_mag
         assert!(f_greater < 0.0, "Force should be attractive for r > r0");
+    }
+
+    #[test]
+    fn minimum_image_behavior() {
+        let box_size = 5.0;
+        let diff = Vector3::new(4.9, 0.0, -4.9);
+        let mi = minimum_image(&diff, box_size);
+        // 4.9 -> -0.1 after minimum image
+        assert!((mi[0] + 0.1).abs() < 1e-6);
+        // -4.9 -> 0.1 after minimum image
+        assert!((mi[2] - 0.1).abs() < 1e-6);
     }
 }
