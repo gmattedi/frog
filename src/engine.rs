@@ -3,27 +3,31 @@ use crate::io;
 use crate::schema;
 use nalgebra::{Dyn, Matrix3xX, OVector, Vector3};
 use rand;
+use rand::{Rng, SeedableRng};
+use rand_chacha;
 
 /// Initialize the system with random positions, velocities, and masses
 ///
 /// # Arguments
 /// * `rng` - Random number generator
 /// * `n_particles` - Number of particles
-/// * `scale` - Scale factor for positions and velocities
+/// * `scale_pos` - Scale factor for positions
+/// * `scale_vel` - Scale factor for velocities
 ///
 /// # Returns
 /// The initialized state of the system
-pub fn init_system<R: rand::Rng + ?Sized>(
-    rng: &mut R,
-    n_particles: usize,
-    scale: f32,
-) -> schema::State {
-    // nalgebra is column-major, so Matrix3xX is very efficient
-    let positions = Matrix3xX::from_fn(n_particles, |_, _| rng.random::<f32>() * scale);
-    let velocities = Matrix3xX::from_fn(n_particles, |_, _| {
-        (rng.random::<f32>() - 0.5) * 2.0 * scale
+pub fn init_system(config: &schema::InitConfig) -> schema::State {
+    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(config.seed);
+
+    let positions = Matrix3xX::from_fn(config.n_particles, |_, _| {
+        (rng.random::<f32>() - 0.5) * 2.0 * config.scale_pos
     });
-    let masses = OVector::<f32, Dyn>::from_fn(n_particles, |_, _| rng.random::<f32>());
+    let velocities = Matrix3xX::from_fn(config.n_particles, |_, _| {
+        (rng.random::<f32>() - 0.5) * 2.0 * config.scale_vel
+    });
+    let masses = OVector::<f32, Dyn>::from_fn(config.n_particles, |_, _| {
+        rng.random::<f32>() * config.scale_mass
+    });
 
     schema::State {
         positions,
@@ -39,31 +43,39 @@ pub fn init_system<R: rand::Rng + ?Sized>(
 ///
 /// # Returns
 /// The observables containing kinetic, potential, and total energy
-pub fn get_energy(state: &schema::State) -> schema::Observables {
-    let mut kinetic = 0.0;
-    let mut potential = 0.0;
+pub fn get_observables(state: &schema::State) -> schema::Observables {
+    let mut kinetic_energy = 0.0;
+    let mut potential_energy = 0.0;
     let n_particles = state.positions.ncols();
 
-    // Kinetic energy
-    for i in 0..n_particles {
-        let v = state.velocities.column(i);
-        kinetic += 0.5 * state.masses[i] * v.norm_squared();
-    }
+    let positions_mean = state.positions.column_mean();
+    let mut positions_var = 0.0;
 
-    // Potential energy
     for i in 0..n_particles {
+        // Kinetic energy: 0.5 * m * v^2
+        let v = state.velocities.column(i);
+        kinetic_energy += 0.5 * state.masses[i] * v.norm_squared();
+
+        // Potential energy: -G * m_i * m_j / r_ij
         let p_i = state.positions.column(i);
         for j in (i + 1)..n_particles {
             let p_j = state.positions.column(j);
-            let dist = (p_j - p_i).norm() + constants::EPS;
-            potential -= constants::G * state.masses[i] * state.masses[j] / dist;
+            let diff = p_j - p_i;
+            let dist = diff.norm() + constants::EPS; // Avoid division by zero
+            potential_energy += -constants::G * state.masses[i] * state.masses[j] / dist;
         }
+
+        let diff = state.positions.column(i) - &positions_mean;
+        positions_var += diff.norm_squared();
     }
 
+    let pos_std = (positions_var / n_particles as f32).sqrt();
+
     schema::Observables {
-        kinetic,
-        potential,
-        total: kinetic + potential,
+        kinetic: kinetic_energy,
+        potential: potential_energy,
+        total: kinetic_energy + potential_energy,
+        pos_std,
     }
 }
 
@@ -118,28 +130,31 @@ pub fn step(state: &mut schema::State) {
 /// # Arguments
 /// * `state` - The current state of the system
 /// * `n_steps` - Number of simulation steps
-/// * `output` - Output file path
-/// * `energy` - Energy file path
+/// * `output_traj` - Output file path for trajectory
+/// * `output_obs` - Output file path for observables
 /// * `stride` - Interval for writing output
 /// * `burn_in` - Number of burn-in steps
 ///
 /// # Panics
 /// Panics if writing to the output files fails
-pub fn simulation(
-    state: &mut schema::State,
-    n_steps: usize,
-    output: &std::path::PathBuf,
-    energy: &std::path::PathBuf,
-    stride: usize,
-    burn_in: usize,
-) {
-    let mut output_file = std::fs::File::create(output).unwrap();
-    let mut energy_file = std::fs::File::create(energy).unwrap();
+pub fn simulate(state: &mut schema::State, config: &schema::Config) {
+    let mut output_traj = schema::OutputFile {
+        file: std::fs::File::create(&config.output_traj)
+            .expect("Failed to create trajectory output file"),
+        has_header: false,
+    };
 
-    io::write_state(state, 0, &mut output_file);
-    io::write_energy(state, 0, &mut energy_file);
+    let mut output_obs = schema::OutputFile {
+        file: std::fs::File::create(&config.output_obs)
+            .expect("Failed to create observables output file"),
+        has_header: false,
+    };
 
-    let pbar = indicatif::ProgressBar::new(n_steps as u64);
+    let observables = get_observables(state);
+    io::write_state(state, 0, &mut output_traj, config.center_trajectory);
+    io::write_observables(&observables, 0, &mut output_obs);
+
+    let pbar = indicatif::ProgressBar::new(config.n_steps as u64);
     pbar.set_style(
         indicatif::ProgressStyle::with_template(
             "{spinner:.green} {msg:.bold} [{pos}/{len}] [{wide_bar:.cyan/blue}] {eta_precise} [{per_sec}]",
@@ -148,10 +163,12 @@ pub fn simulation(
         .progress_chars("#>-"),
     );
 
-    for i in 1..=n_steps {
-        if (i >= burn_in) && (i % stride == 0) {
-            io::write_state(state, i, &mut output_file);
-            io::write_energy(state, i, &mut energy_file);
+    for i in 1..=config.n_steps {
+        if (i >= config.burn_in) && (i % config.stride == 0) {
+            io::write_state(state, i, &mut output_traj, config.center_trajectory);
+            let observables = get_observables(state);
+            pbar.set_message(format!("{}", observables));
+            io::write_observables(&observables, i, &mut output_obs);
         }
         step(state);
         pbar.inc(1);

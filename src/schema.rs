@@ -1,4 +1,5 @@
 use nalgebra::{Dyn, Matrix3xX, OVector};
+use std::io::Write;
 
 /// State of the N-body system
 ///
@@ -19,8 +20,81 @@ pub struct State {
 /// * `kinetic` - Total kinetic energy
 /// * `potential` - Total potential energy
 /// * `total` - Total energy
+/// * `pos_std` - Standard deviation of particle positions
 pub struct Observables {
     pub kinetic: f32,
     pub potential: f32,
     pub total: f32,
+    pub pos_std: f32,
+}
+
+/// Display implementation for Observables
+impl std::fmt::Display for Observables {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "E_tot: {:8.3e}, E_kin: {:8.3e}, E_pot: {:8.3e}, Pos_std: {:8.3e}",
+            self.total, self.kinetic, self.potential, self.pos_std
+        )
+    }
+}
+
+/// Output file handler
+///
+/// # Fields
+/// * `file` - File handle
+/// * `has_header` - Flag indicating if header has been written
+pub struct OutputFile {
+    pub file: std::fs::File,
+    pub has_header: bool,
+}
+
+/// Methods for OutputFile
+impl OutputFile {
+    /// Write header to the output file if not already written
+    ///
+    /// # Arguments
+    /// * `header` - Header string to write
+    pub fn write_header(&mut self, header: &str) {
+        if !self.has_header {
+            writeln!(self.file, "{}", header).unwrap();
+        }
+        self.has_header = true;
+    }
+}
+
+/// Initial configuration parameters
+///
+/// # Fields
+/// * `seed` - Random seed for initialization
+/// * `n_particles` - Number of particles
+/// * `scale_pos` - Scale factor for positions
+/// * `scale_vel` - Scale factor for velocities
+/// * `scale_mass` - Scale factor for masses
+pub struct InitConfig {
+    pub seed: u64,
+    pub n_particles: usize,
+    pub scale_pos: f32,
+    pub scale_vel: f32,
+    pub scale_mass: f32,
+}
+
+/// Configuration for the simulation run
+///
+/// # Fields
+/// * `init_config` - Initial configuration parameters
+/// * `n_steps` - Number of simulation steps
+/// * `burn_in` - Number of burn-in steps
+/// * `output_traj` - Output file path for trajectory
+/// * `output_obs` - Output file path for observables
+/// * `stride` - Interval for writing output
+/// * `center_trajectory` - Flag to center trajectory on center of mass
+pub struct Config<'a> {
+    pub init_config: &'a InitConfig,
+    pub n_steps: usize,
+    pub burn_in: usize,
+    pub output_traj: &'a std::path::PathBuf,
+    pub output_obs: &'a std::path::PathBuf,
+    pub stride: usize,
+    pub center_trajectory: bool,
 }

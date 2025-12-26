@@ -43,8 +43,8 @@ fn get_styles() -> clap::builder::Styles {
 /// # Arguments
 /// * `n_particles` - Number of particles in the simulation
 /// * `n_steps` - Number of simulation steps
-/// * `output` - Output file path
-/// * `energy` - Energy file path
+/// * `trajectory` - Path to trajectory output file
+/// * `observables` - Path to observables output file
 /// * `seed` - Random seed
 /// * `burn_in` - Number of burn-in steps
 /// * `stride` - Interval for writing output
@@ -54,21 +54,32 @@ fn get_styles() -> clap::builder::Styles {
 #[command(name = "frog")]
 #[command(styles=get_styles())]
 pub struct Args {
+    // Random seed
+    #[arg(short = 'r', long, default_value_t = 42, help = "Random seed")]
+    pub seed: u64,
     // Number of particles
     #[arg(short = 'n', long, help = "Number of particles in the simulation")]
     pub n_particles: usize,
     // Number of simulation steps
     #[arg(short = 's', long, help = "Number of simulation steps")]
     pub n_steps: usize,
-    // Output file path
-    #[arg(short, long, help = "Output file path")]
-    pub output: PathBuf,
-    // Energy file path
-    #[arg(short, long, help = "Energy file path")]
-    pub energy: PathBuf,
-    // Random seed
-    #[arg(short = 'r', long, default_value_t = 42, help = "Random seed")]
-    pub seed: u64,
+    // Scale for positions
+    #[arg(
+        long,
+        default_value_t = 1.0,
+        help = "Scale factor for initial positions"
+    )]
+    pub scale_pos: f32,
+    // Scale for velocities
+    #[arg(
+        long,
+        default_value_t = 1.0,
+        help = "Scale factor for initial velocities"
+    )]
+    pub scale_vel: f32,
+    // Scale for masses
+    #[arg(long, default_value_t = 1.0, help = "Scale factor for initial masses")]
+    pub scale_mass: f32,
     // Burn-in steps
     #[arg(
         short = 'b',
@@ -77,7 +88,25 @@ pub struct Args {
         help = "Number of burn-in steps"
     )]
     pub burn_in: usize,
+    // Output file path
+    #[arg(
+        short,
+        long,
+        default_value = "trajectory.txt",
+        help = "Trajectory output file path"
+    )]
+    pub trajectory: PathBuf,
+    // Energy file path
+    #[arg(short, long, help = "Observables output file path")]
+    pub observables: PathBuf,
     // Stride for output
     #[arg(short = 'd', long, default_value_t = 1, help = "Stride for output")]
     pub stride: usize,
+    // Center of mass correction
+    #[arg(
+        long,
+        default_value_t = true,
+        help = "Center the trajectory on the center of mass"
+    )]
+    pub center_trajectory: bool,
 }
