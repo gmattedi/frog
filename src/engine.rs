@@ -40,39 +40,37 @@ pub fn init_system<R: rand::Rng + ?Sized>(
 /// # Returns
 /// The observables containing kinetic, potential, and total energy
 pub fn get_observables(state: &schema::State) -> schema::Observables {
-    let mut kinetic = 0.0;
-    let mut potential = 0.0;
+    let mut kinetic_energy = 0.0;
+    let mut potential_energy = 0.0;
     let n_particles = state.positions.ncols();
 
-    // Kinetic energy
-    for i in 0..n_particles {
-        let v = state.velocities.column(i);
-        kinetic += 0.5 * state.masses[i] * v.norm_squared();
-    }
+    let positions_mean = state.positions.column_mean();
+    let mut positions_var = 0.0;
 
-    // Potential energy
     for i in 0..n_particles {
+        // Kinetic energy: 0.5 * m * v^2
+        let v = state.velocities.column(i);
+        kinetic_energy += 0.5 * state.masses[i] * v.norm_squared();
+
+        // Potential energy: -G * m_i * m_j / r_ij
         let p_i = state.positions.column(i);
         for j in (i + 1)..n_particles {
             let p_j = state.positions.column(j);
-            let dist = (p_j - p_i).norm() + constants::EPS;
-            potential -= constants::G * state.masses[i] * state.masses[j] / dist;
+            let diff = p_j - p_i;
+            let dist = diff.norm() + constants::EPS; // Avoid division by zero
+            potential_energy += -constants::G * state.masses[i] * state.masses[j] / dist;
         }
+
+        let diff = state.positions.column(i) - &positions_mean;
+        positions_var += diff.norm_squared();
     }
 
-    // Stadard deviation of positions
-    let mean_pos = state.positions.column_mean();
-    let mut pos_var = 0.0;
-    for i in 0..n_particles {
-        let diff = state.positions.column(i) - &mean_pos;
-        pos_var += diff.norm_squared();
-    }
-    let pos_std = (pos_var / n_particles as f32).sqrt();
+    let pos_std = (positions_var / n_particles as f32).sqrt();
 
     schema::Observables {
-        kinetic,
-        potential,
-        total: kinetic + potential,
+        kinetic: kinetic_energy,
+        potential: potential_energy,
+        total: kinetic_energy + potential_energy,
         pos_std,
     }
 }
