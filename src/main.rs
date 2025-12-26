@@ -19,9 +19,9 @@ fn main() {
 
     let config = schema::Config {
         init_config: &init_config,
-        n_steps: args.n_steps,
         output_traj: &args.trajectory,
         output_obs: &args.observables,
+        n_steps: args.n_steps,
         stride: args.stride,
         burn_in: args.burn_in,
     };

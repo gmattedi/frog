@@ -1,4 +1,5 @@
 use nalgebra::{Dyn, Matrix3xX, OVector};
+use std::io::Write;
 
 /// State of the N-body system
 ///
@@ -35,6 +36,30 @@ impl std::fmt::Display for Observables {
             "E_tot: {:8.3e}, E_kin: {:8.3e}, E_pot: {:8.3e}, Pos_std: {:8.3e}",
             self.total, self.kinetic, self.potential, self.pos_std
         )
+    }
+}
+
+/// Output file handler
+///
+/// # Fields
+/// * `file` - File handle
+/// * `has_header` - Flag indicating if header has been written
+pub struct OutputFile {
+    pub file: std::fs::File,
+    pub has_header: bool,
+}
+
+/// Methods for OutputFile
+impl OutputFile {
+    /// Write header to the output file if not already written
+    ///
+    /// # Arguments
+    /// * `header` - Header string to write
+    pub fn write_header(&mut self, header: &str) {
+        if !self.has_header {
+            writeln!(self.file, "{}", header).unwrap();
+        }
+        self.has_header = true;
     }
 }
 

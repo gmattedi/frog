@@ -136,12 +136,21 @@ pub fn step(state: &mut schema::State) {
 /// # Panics
 /// Panics if writing to the output files fails
 pub fn simulate(state: &mut schema::State, config: &schema::Config) {
-    let mut traj_handle = std::fs::File::create(&config.output_traj).unwrap();
-    let mut output_handle = std::fs::File::create(&config.output_obs).unwrap();
+    let mut output_traj = schema::OutputFile {
+        file: std::fs::File::create(&config.output_traj)
+            .expect("Failed to create trajectory output file"),
+        has_header: false,
+    };
+
+    let mut output_obs = schema::OutputFile {
+        file: std::fs::File::create(&config.output_obs)
+            .expect("Failed to create observables output file"),
+        has_header: false,
+    };
 
     let observables = get_observables(state);
-    io::write_state(state, 0, &mut traj_handle);
-    io::write_observables(&observables, 0, &mut output_handle);
+    io::write_state(state, 0, &mut output_traj);
+    io::write_observables(&observables, 0, &mut output_obs);
 
     let pbar = indicatif::ProgressBar::new(config.n_steps as u64);
     pbar.set_style(
@@ -154,11 +163,11 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
 
     for i in 1..=config.n_steps {
         if (i >= config.burn_in) && (i % config.stride == 0) {
-            io::write_state(state, i, &mut traj_handle);
+            io::write_state(state, i, &mut output_traj);
 
             let observables = get_observables(state);
             pbar.set_message(format!("{}", observables));
-            io::write_observables(&observables, i, &mut output_handle);
+            io::write_observables(&observables, i, &mut output_obs);
         }
         step(state);
         pbar.inc(1);
