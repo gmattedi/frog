@@ -135,21 +135,14 @@ pub fn step(state: &mut schema::State) {
 ///
 /// # Panics
 /// Panics if writing to the output files fails
-pub fn simulation(
-    state: &mut schema::State,
-    n_steps: usize,
-    output_traj: &std::path::PathBuf,
-    output_obs: &std::path::PathBuf,
-    stride: usize,
-    burn_in: usize,
-) {
-    let mut traj_handle = std::fs::File::create(output_traj).unwrap();
-    let mut output_handle = std::fs::File::create(output_obs).unwrap();
+pub fn simulate(state: &mut schema::State, config: &schema::SimulateConfig) {
+    let mut traj_handle = std::fs::File::create(&config.output_traj).unwrap();
+    let mut output_handle = std::fs::File::create(&config.output_obs).unwrap();
 
     io::write_state(state, 0, &mut traj_handle);
     io::write_observables(state, 0, &mut output_handle);
 
-    let pbar = indicatif::ProgressBar::new(n_steps as u64);
+    let pbar = indicatif::ProgressBar::new(config.n_steps as u64);
     pbar.set_style(
         indicatif::ProgressStyle::with_template(
             "{spinner:.green} {msg:.bold} [{pos}/{len}] [{wide_bar:.cyan/blue}] {eta_precise} [{per_sec}]",
@@ -158,8 +151,8 @@ pub fn simulation(
         .progress_chars("#>-"),
     );
 
-    for i in 1..=n_steps {
-        if (i >= burn_in) && (i % stride == 0) {
+    for i in 1..=config.n_steps {
+        if (i >= config.burn_in) && (i % config.stride == 0) {
             io::write_state(state, i, &mut traj_handle);
             io::write_observables(state, i, &mut output_handle);
         }

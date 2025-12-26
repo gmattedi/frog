@@ -26,3 +26,19 @@ pub struct Observables {
     pub total: f32,
     pub pos_std: f32,
 }
+
+/// Configuration for the simulation run
+///
+/// # Fields
+/// * `n_steps` - Number of simulation steps
+/// * `output_traj` - Output file path for trajectory
+/// * `output_obs` - Output file path for observables
+/// * `stride` - Interval for writing output
+/// * `burn_in` - Number of burn-in steps
+pub struct SimulateConfig<'a> {
+    pub n_steps: usize,
+    pub output_traj: &'a std::path::PathBuf,
+    pub output_obs: &'a std::path::PathBuf,
+    pub stride: usize,
+    pub burn_in: usize,
+}

@@ -15,12 +15,13 @@ fn main() {
 
     let mut state = engine::init_system(&mut rng, args.n_particles, 1.0);
 
-    engine::simulation(
-        &mut state,
-        args.n_steps,
-        &args.trajectory,
-        &args.observables,
-        args.stride,
-        args.burn_in,
-    );
+    let config = schema::SimulateConfig {
+        n_steps: args.n_steps,
+        output_traj: &args.trajectory,
+        output_obs: &args.observables,
+        stride: args.stride,
+        burn_in: args.burn_in,
+    };
+
+    engine::simulate(&mut state, &config);
 }
