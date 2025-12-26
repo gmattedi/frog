@@ -1,5 +1,4 @@
-use crate::engine;
-use crate::schema::State;
+use crate::schema;
 use std::io::Write;
 
 /// Write the current state to the given file
@@ -11,7 +10,7 @@ use std::io::Write;
 ///
 /// # Panics
 /// Panics if writing to the file fails
-pub fn write_state(state: &State, step: usize, file: &mut std::fs::File) {
+pub fn write_state(state: &schema::State, step: usize, file: &mut std::fs::File) {
     for i in 0..state.positions.ncols() {
         let pos = state.positions.column(i);
         let mass = state.masses[i];
@@ -27,14 +26,13 @@ pub fn write_state(state: &State, step: usize, file: &mut std::fs::File) {
 /// Write the current observables to the given file
 ///
 /// # Arguments
-/// * `state` - The current state of the system
+/// * `observables` - The current observables of the system
 /// * `step` - The current simulation step
 /// * `file` - The file to write to
 ///
 /// # Panics
 /// Panics if writing to the file fails
-pub fn write_observables(state: &State, step: usize, file: &mut std::fs::File) {
-    let observables = engine::get_observables(state);
+pub fn write_observables(observables: &schema::Observables, step: usize, file: &mut std::fs::File) {
     writeln!(
         file,
         "{}\t{}\t{}\t{}\t{}",

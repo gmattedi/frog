@@ -139,8 +139,9 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
     let mut traj_handle = std::fs::File::create(&config.output_traj).unwrap();
     let mut output_handle = std::fs::File::create(&config.output_obs).unwrap();
 
+    let observables = get_observables(state);
     io::write_state(state, 0, &mut traj_handle);
-    io::write_observables(state, 0, &mut output_handle);
+    io::write_observables(&observables, 0, &mut output_handle);
 
     let pbar = indicatif::ProgressBar::new(config.n_steps as u64);
     pbar.set_style(
@@ -154,7 +155,10 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
     for i in 1..=config.n_steps {
         if (i >= config.burn_in) && (i % config.stride == 0) {
             io::write_state(state, i, &mut traj_handle);
-            io::write_observables(state, i, &mut output_handle);
+
+            let observables = get_observables(state);
+            pbar.set_message(format!("{}", observables));
+            io::write_observables(&observables, i, &mut output_handle);
         }
         step(state);
         pbar.inc(1);

@@ -27,6 +27,17 @@ pub struct Observables {
     pub pos_std: f32,
 }
 
+/// Display implementation for Observables
+impl std::fmt::Display for Observables {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "E_tot: {:7.3e}, E_kin: {:7.3e}, E_pot: {:7.3e}, Pos_std: {:7.3e}",
+            self.total, self.kinetic, self.potential, self.pos_std
+        )
+    }
+}
+
 /// Initial configuration parameters
 ///
 /// # Fields
