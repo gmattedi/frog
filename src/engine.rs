@@ -6,6 +6,18 @@ use rand;
 use rand::{Rng, SeedableRng};
 use rand_chacha;
 
+/// Morse potential function and derivative helpers
+pub(crate) fn morse_potential(r: f32) -> f32 {
+    let e = (-constants::MORSE_A * (r - constants::MORSE_R0)).exp();
+    constants::MORSE_D * ((1.0 - e) * (1.0 - e) - 1.0)
+}
+
+/// Returns the scalar radial force (signed) = -dV/dr
+pub(crate) fn morse_force_mag(r: f32) -> f32 {
+    let e = (-constants::MORSE_A * (r - constants::MORSE_R0)).exp();
+    -2.0 * constants::MORSE_D * constants::MORSE_A * (1.0 - e) * e
+}
+
 /// Initialize the system with random positions, velocities, and masses
 ///
 /// # Arguments
@@ -63,9 +75,7 @@ pub fn get_observables(state: &schema::State) -> schema::Observables {
             let diff = p_j - p_i;
             let dist = diff.norm() + constants::EPS; // Avoid division by zero
             // Morse potential: V(r) = D * ( (1 - exp(-a*(r - r0)))^2 - 1 )
-            let e = (-constants::MORSE_A * (dist - constants::MORSE_R0)).exp();
-            let v = constants::MORSE_D * ((1.0 - e) * (1.0 - e) - 1.0);
-            potential_energy += v;
+            potential_energy += morse_potential(dist);
         }
 
         let diff = state.positions.column(i) - &positions_mean;
@@ -102,11 +112,7 @@ pub fn step(state: &mut schema::State) {
                 let diff = p_j - p_i;
                 let r = diff.norm() + constants::EPS;
 
-                // Morse force magnitude: F = -dV/dr, where
-                // dV/dr = 2 * D * a * (1 - exp(-a*(r - r0))) * exp(-a*(r - r0))
-                let e = (-constants::MORSE_A * (r - constants::MORSE_R0)).exp();
-                let d_vdr = 2.0 * constants::MORSE_D * constants::MORSE_A * (1.0 - e) * e;
-                let force_mag = -d_vdr;
+                let force_mag = morse_force_mag(r);
 
                 // Acceleration on particle i: a_i = F / m_i (direction along diff)
                 acceleration += (diff / r) * (force_mag / state.masses[i]);
@@ -181,4 +187,68 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
         pbar.inc(1);
     }
     pbar.finish_with_message("Simulation complete");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nalgebra::{Dyn, Matrix3xX, OVector, Vector3};
+
+    const EPS_F: f32 = 1e-6;
+
+    #[test]
+    fn morse_potential_minimum() {
+        let r0 = constants::MORSE_R0;
+        let v = morse_potential(r0);
+        assert!((v + constants::MORSE_D).abs() < EPS_F, "V(r0) should be -D");
+    }
+
+    #[test]
+    fn morse_force_zero_at_equilibrium() {
+        let r0 = constants::MORSE_R0;
+        let f = morse_force_mag(r0);
+        assert!(f.abs() < EPS_F, "Force at r0 should be zero");
+    }
+
+    #[test]
+    fn two_particle_potential_matches() {
+        let r0 = constants::MORSE_R0;
+        // Two particles along x separated by r0
+        let p1 = Vector3::new(0.0, 0.0, 0.0);
+        let p2 = Vector3::new(r0, 0.0, 0.0);
+        let positions = Matrix3xX::from_columns(&[p1, p2]);
+        let velocities = Matrix3xX::from_columns(&[Vector3::zeros(), Vector3::zeros()]);
+        let masses = OVector::<f32, Dyn>::from_column_slice(&[1.0, 1.0]);
+
+        let state = schema::State {
+            positions,
+            velocities,
+            masses,
+        };
+
+        let obs = get_observables(&state);
+        let expected = morse_potential(r0);
+        assert!((obs.kinetic).abs() < EPS_F, "Kinetic should be zero");
+        assert!(
+            (obs.potential - expected).abs() < 1e-5,
+            "Potential should match pair Morse potential"
+        );
+        assert!(
+            (obs.total - expected).abs() < 1e-5,
+            "Total equals potential"
+        );
+    }
+
+    #[test]
+    fn morse_force_signs() {
+        let r0 = constants::MORSE_R0;
+        let r_less = r0 * 0.9;
+        let r_greater = r0 * 1.1;
+        let f_less = morse_force_mag(r_less);
+        let f_greater = morse_force_mag(r_greater);
+        // r < r0 -> repulsive -> positive force_mag (points along diff)
+        assert!(f_less > 0.0, "Force should be repulsive for r < r0");
+        // r > r0 -> attractive -> negative force_mag
+        assert!(f_greater < 0.0, "Force should be attractive for r > r0");
+    }
 }
