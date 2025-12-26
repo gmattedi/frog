@@ -32,7 +32,7 @@ impl std::fmt::Display for Observables {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "E_tot: {:7.3e}, E_kin: {:7.3e}, E_pot: {:7.3e}, Pos_std: {:7.3e}",
+            "E_tot: {:8.3e}, E_kin: {:8.3e}, E_pot: {:8.3e}, Pos_std: {:8.3e}",
             self.total, self.kinetic, self.potential, self.pos_std
         )
     }
