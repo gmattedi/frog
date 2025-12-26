@@ -73,7 +73,7 @@ pub struct Args {
     // Scale for velocities
     #[arg(
         long,
-        default_value_t = 1.0,
+        default_value_t = 1e-4,
         help = "Scale factor for initial velocities"
     )]
     pub scale_vel: f32,
@@ -102,11 +102,18 @@ pub struct Args {
     // Stride for output
     #[arg(short = 'd', long, default_value_t = 1, help = "Stride for output")]
     pub stride: usize,
-    // Center of mass correction
+    // Periodic boundary conditions
     #[arg(
         long,
         default_value_t = true,
-        help = "Center the trajectory on the center of mass"
+        help = "Enable periodic boundary conditions"
     )]
-    pub center_trajectory: bool,
+    pub periodic: bool,
+    // Cubic box size for PBC
+    #[arg(
+        long,
+        default_value_t = 10.0,
+        help = "Box size for periodic boundary conditions"
+    )]
+    pub box_size: f32,
 }

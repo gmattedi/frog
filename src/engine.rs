@@ -6,6 +6,37 @@ use rand;
 use rand::{Rng, SeedableRng};
 use rand_chacha;
 
+/// Morse potential function and derivative helpers
+pub(crate) fn morse_potential(r: f32) -> f32 {
+    let e = (-constants::MORSE_A * (r - constants::MORSE_R0)).exp();
+    constants::MORSE_D * ((1.0 - e) * (1.0 - e) - 1.0)
+}
+
+/// Returns the scalar radial force (signed) = -dV/dr
+pub(crate) fn morse_force_mag(r: f32) -> f32 {
+    let e = (-constants::MORSE_A * (r - constants::MORSE_R0)).exp();
+    -2.0 * constants::MORSE_D * constants::MORSE_A * (1.0 - e) * e
+}
+
+/// Apply minimum image convention to a displacement vector for a cubic box
+pub(crate) fn minimum_image(diff: &Vector3<f32>, box_size: f32) -> Vector3<f32> {
+    Vector3::new(
+        diff[0] - box_size * (diff[0] / box_size).round(),
+        diff[1] - box_size * (diff[1] / box_size).round(),
+        diff[2] - box_size * (diff[2] / box_size).round(),
+    )
+}
+
+/// Wrap all particle positions in-place into the centered [-box_size/2, box_size/2) cubic box
+pub(crate) fn wrap_positions(state: &mut schema::State, box_size: f32) {
+    for i in 0..state.positions.ncols() {
+        for k in 0..3 {
+            let x = state.positions[(k, i)];
+            state.positions[(k, i)] = x - box_size * ((x + box_size * 0.5) / box_size).floor();
+        }
+    }
+}
+
 /// Initialize the system with random positions, velocities, and masses
 ///
 /// # Arguments
@@ -43,7 +74,11 @@ pub fn init_system(config: &schema::InitConfig) -> schema::State {
 ///
 /// # Returns
 /// The observables containing kinetic, potential, and total energy
-pub fn get_observables(state: &schema::State) -> schema::Observables {
+pub fn get_observables(
+    state: &schema::State,
+    periodic: bool,
+    box_size: f32,
+) -> schema::Observables {
     let mut kinetic_energy = 0.0;
     let mut potential_energy = 0.0;
     let n_particles = state.positions.ncols();
@@ -52,17 +87,23 @@ pub fn get_observables(state: &schema::State) -> schema::Observables {
     let mut positions_var = 0.0;
 
     for i in 0..n_particles {
+        let mut diff;
         // Kinetic energy: 0.5 * m * v^2
         let v = state.velocities.column(i);
         kinetic_energy += 0.5 * state.masses[i] * v.norm_squared();
 
-        // Potential energy: -G * m_i * m_j / r_ij
+        // Potential energy: Morse potential between pairs
         let p_i = state.positions.column(i);
         for j in (i + 1)..n_particles {
             let p_j = state.positions.column(j);
-            let diff = p_j - p_i;
+            diff = p_j - p_i;
+            if periodic {
+                // minimum image convention
+                diff = minimum_image(&diff, box_size);
+            }
             let dist = diff.norm() + constants::EPS; // Avoid division by zero
-            potential_energy += -constants::G * state.masses[i] * state.masses[j] / dist;
+            // Morse potential: V(r) = D * ( (1 - exp(-a*(r - r0)))^2 - 1 )
+            potential_energy += morse_potential(dist);
         }
 
         let diff = state.positions.column(i) - &positions_mean;
@@ -83,7 +124,7 @@ pub fn get_observables(state: &schema::State) -> schema::Observables {
 ///
 /// # Arguments
 /// * `state` - The current state of the system
-pub fn step(state: &mut schema::State) {
+pub fn step(state: &mut schema::State, periodic: bool, box_size: f32) {
     let mut new_positions = state.positions.clone();
     let mut new_velocities = state.velocities.clone();
     let n_particles = state.positions.ncols();
@@ -96,13 +137,16 @@ pub fn step(state: &mut schema::State) {
         for j in 0..n_particles {
             if i != j {
                 let p_j = state.positions.column(j);
-                let diff = p_j - p_i;
-                let dist_sq = diff.norm_squared() + constants::EPS;
+                let mut diff = p_j - p_i;
+                if periodic {
+                    diff = minimum_image(&diff, box_size);
+                }
+                let r = diff.norm() + constants::EPS;
 
-                // Acceleration = G * m_j * r_ij / |r_ij|^3
-                // Note: m_i cancels out because a = F / m_i
-                acceleration +=
-                    (constants::G * state.masses[j] / (dist_sq * dist_sq.sqrt())) * diff;
+                let force_mag = morse_force_mag(r);
+
+                // Acceleration on particle i: a_i = F / m_i (direction along diff)
+                acceleration += (diff / r) * (force_mag / state.masses[i]);
             }
         }
 
@@ -119,6 +163,13 @@ pub fn step(state: &mut schema::State) {
         .zip(new_velocities.column_iter())
     {
         pos_col.axpy(constants::DT, &vel_col, 1.0);
+        if periodic {
+            // Wrap into centered [-box/2, box/2)
+            for k in 0..3 {
+                let x = pos_col[k];
+                pos_col[k] = x - box_size * ((x + box_size * 0.5) / box_size).floor();
+            }
+        }
     }
 
     state.positions = new_positions;
@@ -150,8 +201,15 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
         has_header: false,
     };
 
-    let observables = get_observables(state);
-    io::write_state(state, 0, &mut output_traj, config.center_trajectory);
+    // Initial wrapping of positions if periodic boundary conditions are enabled
+    if config.periodic {
+        wrap_positions(state, config.box_size);
+    }
+
+    // Write initial (raw) state and observables first so step 0 reflects
+    // the original initialization (typically in [-scale_pos, scale_pos]).
+    let observables = get_observables(state, config.periodic, config.box_size);
+    io::write_state(state, 0, &mut output_traj);
     io::write_observables(&observables, 0, &mut output_obs);
 
     let pbar = indicatif::ProgressBar::new(config.n_steps as u64);
@@ -165,13 +223,125 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
 
     for i in 1..=config.n_steps {
         if (i >= config.burn_in) && (i % config.stride == 0) {
-            io::write_state(state, i, &mut output_traj, config.center_trajectory);
-            let observables = get_observables(state);
+            io::write_state(state, i, &mut output_traj);
+            let observables = get_observables(state, config.periodic, config.box_size);
             pbar.set_message(format!("{}", observables));
             io::write_observables(&observables, i, &mut output_obs);
         }
-        step(state);
+        step(state, config.periodic, config.box_size);
         pbar.inc(1);
     }
     pbar.finish_with_message("Simulation complete");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nalgebra::{Dyn, Matrix3xX, OVector, Vector3};
+
+    const EPS_F: f32 = 1e-6;
+
+    #[test]
+    fn morse_potential_minimum() {
+        let r0 = constants::MORSE_R0;
+        let v = morse_potential(r0);
+        assert!((v + constants::MORSE_D).abs() < EPS_F, "V(r0) should be -D");
+    }
+
+    #[test]
+    fn morse_force_zero_at_equilibrium() {
+        let r0 = constants::MORSE_R0;
+        let f = morse_force_mag(r0);
+        assert!(f.abs() < EPS_F, "Force at r0 should be zero");
+    }
+
+    #[test]
+    fn two_particle_potential_matches() {
+        let r0 = constants::MORSE_R0;
+        // Two particles along x separated by r0
+        let p1 = Vector3::new(0.0, 0.0, 0.0);
+        let p2 = Vector3::new(r0, 0.0, 0.0);
+        let positions = Matrix3xX::from_columns(&[p1, p2]);
+        let velocities = Matrix3xX::from_columns(&[Vector3::zeros(), Vector3::zeros()]);
+        let masses = OVector::<f32, Dyn>::from_column_slice(&[1.0, 1.0]);
+
+        let state = schema::State {
+            positions,
+            velocities,
+            masses,
+        };
+
+        let obs = get_observables(&state, false, 10.0);
+        let expected = morse_potential(r0);
+        assert!((obs.kinetic).abs() < EPS_F, "Kinetic should be zero");
+        assert!(
+            (obs.potential - expected).abs() < 1e-5,
+            "Potential should match pair Morse potential"
+        );
+        assert!(
+            (obs.total - expected).abs() < 1e-5,
+            "Total equals potential"
+        );
+    }
+
+    #[test]
+    fn morse_force_signs() {
+        let r0 = constants::MORSE_R0;
+        let r_less = r0 * 0.9;
+        let r_greater = r0 * 1.1;
+        let f_less = morse_force_mag(r_less);
+        let f_greater = morse_force_mag(r_greater);
+        // r < r0 -> repulsive -> positive force_mag (points along diff)
+        assert!(f_less > 0.0, "Force should be repulsive for r < r0");
+        // r > r0 -> attractive -> negative force_mag
+        assert!(f_greater < 0.0, "Force should be attractive for r > r0");
+    }
+
+    #[test]
+    fn minimum_image_behavior() {
+        let box_size = 5.0;
+        let diff = Vector3::new(4.9, 0.0, -4.9);
+        let mi = minimum_image(&diff, box_size);
+        // 4.9 -> -0.1 after minimum image
+        assert!((mi[0] + 0.1).abs() < 1e-6);
+        // -4.9 -> 0.1 after minimum image
+        assert!((mi[2] - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn wrap_positions_initial_state() {
+        let mut state = init_system(&schema::InitConfig {
+            seed: 123,
+            n_particles: 10,
+            scale_pos: 1.0,
+            scale_vel: 0.1,
+            scale_mass: 1.0,
+        });
+        // Ensure some positions are negative initially
+        let mut has_negative = false;
+        for i in 0..state.positions.ncols() {
+            let x = state.positions[(0, i)];
+            if x < 0.0 {
+                has_negative = true;
+                break;
+            }
+        }
+        assert!(
+            has_negative,
+            "Sanity: initial positions should contain negative values"
+        );
+
+        // Wrap positions and verify all are in [0, box)
+        let box_size = 10.0;
+        wrap_positions(&mut state, box_size);
+        for i in 0..state.positions.ncols() {
+            for k in 0..3 {
+                let v = state.positions[(k, i)];
+                assert!(
+                    v >= -box_size * 0.5 && v < box_size * 0.5,
+                    "Position must be inside centered box after wrapping"
+                );
+            }
+        }
+    }
 }
