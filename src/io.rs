@@ -1,4 +1,5 @@
 use crate::schema;
+use nalgebra;
 use std::io::Write;
 
 /// Write the current state to the given file
@@ -7,14 +8,28 @@ use std::io::Write;
 /// * `state` - The current state of the system
 /// * `step` - The current simulation step
 /// * `file` - The file to write to
+/// * `center` - Whether to center positions on the center of mass
 ///
 /// # Panics
 /// Panics if writing to the file fails
-pub fn write_state(state: &schema::State, step: usize, file: &mut schema::OutputFile) {
+pub fn write_state(
+    state: &schema::State,
+    step: usize,
+    file: &mut schema::OutputFile,
+    center: bool,
+) {
     file.write_header("step\tid\tx\ty\tz\tmass");
 
+    let com = {
+        if center {
+            (&state.positions * &state.masses) / state.masses.sum()
+        } else {
+            nalgebra::Vector3::<f32>::zeros()
+        }
+    };
+
     for i in 0..state.positions.ncols() {
-        let pos = state.positions.column(i);
+        let pos = state.positions.column(i) - com;
         let mass = state.masses[i];
         writeln!(
             file.file,

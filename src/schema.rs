@@ -70,11 +70,13 @@ impl OutputFile {
 /// * `n_particles` - Number of particles
 /// * `scale_pos` - Scale factor for positions
 /// * `scale_vel` - Scale factor for velocities
+/// * `scale_mass` - Scale factor for masses
 pub struct InitConfig {
     pub seed: u64,
     pub n_particles: usize,
     pub scale_pos: f32,
     pub scale_vel: f32,
+    pub scale_mass: f32,
 }
 
 /// Configuration for the simulation run
@@ -82,15 +84,17 @@ pub struct InitConfig {
 /// # Fields
 /// * `init_config` - Initial configuration parameters
 /// * `n_steps` - Number of simulation steps
+/// * `burn_in` - Number of burn-in steps
 /// * `output_traj` - Output file path for trajectory
 /// * `output_obs` - Output file path for observables
 /// * `stride` - Interval for writing output
-/// * `burn_in` - Number of burn-in steps
+/// * `center_trajectory` - Flag to center trajectory on center of mass
 pub struct Config<'a> {
     pub init_config: &'a InitConfig,
     pub n_steps: usize,
+    pub burn_in: usize,
     pub output_traj: &'a std::path::PathBuf,
     pub output_obs: &'a std::path::PathBuf,
     pub stride: usize,
-    pub burn_in: usize,
+    pub center_trajectory: bool,
 }

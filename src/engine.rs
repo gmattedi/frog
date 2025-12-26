@@ -20,12 +20,14 @@ pub fn init_system(config: &schema::InitConfig) -> schema::State {
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(config.seed);
 
     let positions = Matrix3xX::from_fn(config.n_particles, |_, _| {
-        rng.random::<f32>() * config.scale_pos
+        (rng.random::<f32>() - 0.5) * 2.0 * config.scale_pos
     });
     let velocities = Matrix3xX::from_fn(config.n_particles, |_, _| {
         (rng.random::<f32>() - 0.5) * 2.0 * config.scale_vel
     });
-    let masses = OVector::<f32, Dyn>::from_fn(config.n_particles, |_, _| rng.random::<f32>());
+    let masses = OVector::<f32, Dyn>::from_fn(config.n_particles, |_, _| {
+        rng.random::<f32>() * config.scale_mass
+    });
 
     schema::State {
         positions,
@@ -149,7 +151,7 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
     };
 
     let observables = get_observables(state);
-    io::write_state(state, 0, &mut output_traj);
+    io::write_state(state, 0, &mut output_traj, config.center_trajectory);
     io::write_observables(&observables, 0, &mut output_obs);
 
     let pbar = indicatif::ProgressBar::new(config.n_steps as u64);
@@ -163,8 +165,7 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
 
     for i in 1..=config.n_steps {
         if (i >= config.burn_in) && (i % config.stride == 0) {
-            io::write_state(state, i, &mut output_traj);
-
+            io::write_state(state, i, &mut output_traj, config.center_trajectory);
             let observables = get_observables(state);
             pbar.set_message(format!("{}", observables));
             io::write_observables(&observables, i, &mut output_obs);

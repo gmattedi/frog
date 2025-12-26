@@ -15,6 +15,7 @@ fn main() {
         n_particles: args.n_particles,
         scale_pos: args.scale_pos,
         scale_vel: args.scale_vel,
+        scale_mass: args.scale_mass,
     };
 
     let config = schema::Config {
@@ -24,6 +25,7 @@ fn main() {
         n_steps: args.n_steps,
         stride: args.stride,
         burn_in: args.burn_in,
+        center_trajectory: args.center_trajectory,
     };
 
     let mut state = engine::init_system(&config.init_config);
