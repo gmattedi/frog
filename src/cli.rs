@@ -43,8 +43,8 @@ fn get_styles() -> clap::builder::Styles {
 /// # Arguments
 /// * `n_particles` - Number of particles in the simulation
 /// * `n_steps` - Number of simulation steps
-/// * `output` - Output file path
-/// * `energy` - Energy file path
+/// * `trajectory` - Path to trajectory output file
+/// * `observables` - Path to observables output file
 /// * `seed` - Random seed
 /// * `burn_in` - Number of burn-in steps
 /// * `stride` - Interval for writing output
@@ -61,11 +61,16 @@ pub struct Args {
     #[arg(short = 's', long, help = "Number of simulation steps")]
     pub n_steps: usize,
     // Output file path
-    #[arg(short, long, help = "Output file path")]
-    pub output: PathBuf,
+    #[arg(
+        short,
+        long,
+        default_value = "trajectory.txt",
+        help = "Trajectory output file path"
+    )]
+    pub trajectory: PathBuf,
     // Energy file path
-    #[arg(short, long, help = "Energy file path")]
-    pub energy: PathBuf,
+    #[arg(short, long, help = "Observables output file path")]
+    pub observables: PathBuf,
     // Random seed
     #[arg(short = 'r', long, default_value_t = 42, help = "Random seed")]
     pub seed: u64,

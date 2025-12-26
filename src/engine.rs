@@ -128,8 +128,8 @@ pub fn step(state: &mut schema::State) {
 /// # Arguments
 /// * `state` - The current state of the system
 /// * `n_steps` - Number of simulation steps
-/// * `output` - Output file path
-/// * `energy` - Energy file path
+/// * `output_traj` - Output file path for trajectory
+/// * `output_obs` - Output file path for observables
 /// * `stride` - Interval for writing output
 /// * `burn_in` - Number of burn-in steps
 ///
@@ -138,16 +138,16 @@ pub fn step(state: &mut schema::State) {
 pub fn simulation(
     state: &mut schema::State,
     n_steps: usize,
-    output: &std::path::PathBuf,
-    energy: &std::path::PathBuf,
+    output_traj: &std::path::PathBuf,
+    output_obs: &std::path::PathBuf,
     stride: usize,
     burn_in: usize,
 ) {
-    let mut output_file = std::fs::File::create(output).unwrap();
-    let mut energy_file = std::fs::File::create(energy).unwrap();
+    let mut traj_handle = std::fs::File::create(output_traj).unwrap();
+    let mut output_handle = std::fs::File::create(output_obs).unwrap();
 
-    io::write_state(state, 0, &mut output_file);
-    io::write_observables(state, 0, &mut energy_file);
+    io::write_state(state, 0, &mut traj_handle);
+    io::write_observables(state, 0, &mut output_handle);
 
     let pbar = indicatif::ProgressBar::new(n_steps as u64);
     pbar.set_style(
@@ -160,8 +160,8 @@ pub fn simulation(
 
     for i in 1..=n_steps {
         if (i >= burn_in) && (i % stride == 0) {
-            io::write_state(state, i, &mut output_file);
-            io::write_observables(state, i, &mut energy_file);
+            io::write_state(state, i, &mut traj_handle);
+            io::write_observables(state, i, &mut output_handle);
         }
         step(state);
         pbar.inc(1);

@@ -18,8 +18,8 @@ fn main() {
     engine::simulation(
         &mut state,
         args.n_steps,
-        &args.output,
-        &args.energy,
+        &args.trajectory,
+        &args.observables,
         args.stride,
         args.burn_in,
     );
