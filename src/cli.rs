@@ -85,4 +85,18 @@ pub struct Args {
     // Stride for output
     #[arg(short = 'd', long, default_value_t = 1, help = "Stride for output")]
     pub stride: usize,
+    // Scale for positions
+    #[arg(
+        long,
+        default_value_t = 1.0,
+        help = "Scale factor for initial positions"
+    )]
+    pub scale_pos: f32,
+    // Scale for velocities
+    #[arg(
+        long,
+        default_value_t = 1.0,
+        help = "Scale factor for initial velocities"
+    )]
+    pub scale_vel: f32,
 }

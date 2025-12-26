@@ -1,9 +1,7 @@
 use clap::Parser;
+mod cli;
 mod constants;
 mod engine;
-use rand::SeedableRng;
-use rand_chacha;
-mod cli;
 mod io;
 mod schema;
 
@@ -11,17 +9,24 @@ mod schema;
 /// Initializes the simulation state and runs the simulation loop.
 fn main() {
     let args = cli::Args::parse();
-    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(args.seed);
 
-    let mut state = engine::init_system(&mut rng, args.n_particles, 1.0);
+    let init_config = schema::InitConfig {
+        seed: args.seed,
+        n_particles: args.n_particles,
+        scale_pos: args.scale_pos,
+        scale_vel: args.scale_vel,
+    };
 
-    let config = schema::SimulateConfig {
+    let config = schema::Config {
+        init_config: &init_config,
         n_steps: args.n_steps,
         output_traj: &args.trajectory,
         output_obs: &args.observables,
         stride: args.stride,
         burn_in: args.burn_in,
     };
+
+    let mut state = engine::init_system(&config.init_config);
 
     engine::simulate(&mut state, &config);
 }

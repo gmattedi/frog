@@ -3,27 +3,29 @@ use crate::io;
 use crate::schema;
 use nalgebra::{Dyn, Matrix3xX, OVector, Vector3};
 use rand;
+use rand::{Rng, SeedableRng};
+use rand_chacha;
 
 /// Initialize the system with random positions, velocities, and masses
 ///
 /// # Arguments
 /// * `rng` - Random number generator
 /// * `n_particles` - Number of particles
-/// * `scale` - Scale factor for positions and velocities
+/// * `scale_pos` - Scale factor for positions
+/// * `scale_vel` - Scale factor for velocities
 ///
 /// # Returns
 /// The initialized state of the system
-pub fn init_system<R: rand::Rng + ?Sized>(
-    rng: &mut R,
-    n_particles: usize,
-    scale: f32,
-) -> schema::State {
-    // nalgebra is column-major, so Matrix3xX is very efficient
-    let positions = Matrix3xX::from_fn(n_particles, |_, _| rng.random::<f32>() * scale);
-    let velocities = Matrix3xX::from_fn(n_particles, |_, _| {
-        (rng.random::<f32>() - 0.5) * 2.0 * scale
+pub fn init_system(config: &schema::InitConfig) -> schema::State {
+    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(config.seed);
+
+    let positions = Matrix3xX::from_fn(config.n_particles, |_, _| {
+        rng.random::<f32>() * config.scale_pos
     });
-    let masses = OVector::<f32, Dyn>::from_fn(n_particles, |_, _| rng.random::<f32>());
+    let velocities = Matrix3xX::from_fn(config.n_particles, |_, _| {
+        (rng.random::<f32>() - 0.5) * 2.0 * config.scale_vel
+    });
+    let masses = OVector::<f32, Dyn>::from_fn(config.n_particles, |_, _| rng.random::<f32>());
 
     schema::State {
         positions,
@@ -133,7 +135,7 @@ pub fn step(state: &mut schema::State) {
 ///
 /// # Panics
 /// Panics if writing to the output files fails
-pub fn simulate(state: &mut schema::State, config: &schema::SimulateConfig) {
+pub fn simulate(state: &mut schema::State, config: &schema::Config) {
     let mut traj_handle = std::fs::File::create(&config.output_traj).unwrap();
     let mut output_handle = std::fs::File::create(&config.output_obs).unwrap();
 

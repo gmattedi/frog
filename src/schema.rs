@@ -27,15 +27,31 @@ pub struct Observables {
     pub pos_std: f32,
 }
 
+/// Initial configuration parameters
+///
+/// # Fields
+/// * `seed` - Random seed for initialization
+/// * `n_particles` - Number of particles
+/// * `scale_pos` - Scale factor for positions
+/// * `scale_vel` - Scale factor for velocities
+pub struct InitConfig {
+    pub seed: u64,
+    pub n_particles: usize,
+    pub scale_pos: f32,
+    pub scale_vel: f32,
+}
+
 /// Configuration for the simulation run
 ///
 /// # Fields
+/// * `init_config` - Initial configuration parameters
 /// * `n_steps` - Number of simulation steps
 /// * `output_traj` - Output file path for trajectory
 /// * `output_obs` - Output file path for observables
 /// * `stride` - Interval for writing output
 /// * `burn_in` - Number of burn-in steps
-pub struct SimulateConfig<'a> {
+pub struct Config<'a> {
+    pub init_config: &'a InitConfig,
     pub n_steps: usize,
     pub output_traj: &'a std::path::PathBuf,
     pub output_obs: &'a std::path::PathBuf,
