@@ -27,12 +27,12 @@ pub(crate) fn minimum_image(diff: &Vector3<f32>, box_size: f32) -> Vector3<f32> 
     )
 }
 
-/// Wrap all particle positions in-place into the [0, box_size) cubic box
+/// Wrap all particle positions in-place into the centered [-box_size/2, box_size/2) cubic box
 pub(crate) fn wrap_positions(state: &mut schema::State, box_size: f32) {
     for i in 0..state.positions.ncols() {
         for k in 0..3 {
             let x = state.positions[(k, i)];
-            state.positions[(k, i)] = x - box_size * (x / box_size).floor();
+            state.positions[(k, i)] = x - box_size * ((x + box_size * 0.5) / box_size).floor();
         }
     }
 }
@@ -164,9 +164,10 @@ pub fn step(state: &mut schema::State, periodic: bool, box_size: f32) {
     {
         pos_col.axpy(constants::DT, &vel_col, 1.0);
         if periodic {
+            // Wrap into centered [-box/2, box/2)
             for k in 0..3 {
                 let x = pos_col[k];
-                pos_col[k] = x - box_size * (x / box_size).floor();
+                pos_col[k] = x - box_size * ((x + box_size * 0.5) / box_size).floor();
             }
         }
     }
@@ -200,11 +201,13 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
         has_header: false,
     };
 
-    // If periodic boundaries are enabled, wrap initial positions into the box
+    // Initial wrapping of positions if periodic boundary conditions are enabled
     if config.periodic {
         wrap_positions(state, config.box_size);
     }
 
+    // Write initial (raw) state and observables first so step 0 reflects
+    // the original initialization (typically in [-scale_pos, scale_pos]).
     let observables = get_observables(state, config.periodic, config.box_size);
     io::write_state(state, 0, &mut output_traj);
     io::write_observables(&observables, 0, &mut output_obs);
@@ -323,7 +326,10 @@ mod tests {
                 break;
             }
         }
-        assert!(has_negative, "Sanity: initial positions should contain negative values");
+        assert!(
+            has_negative,
+            "Sanity: initial positions should contain negative values"
+        );
 
         // Wrap positions and verify all are in [0, box)
         let box_size = 10.0;
@@ -331,7 +337,10 @@ mod tests {
         for i in 0..state.positions.ncols() {
             for k in 0..3 {
                 let v = state.positions[(k, i)];
-                assert!(v >= 0.0 && v < box_size, "Position must be inside box after wrapping");
+                assert!(
+                    v >= -box_size * 0.5 && v < box_size * 0.5,
+                    "Position must be inside centered box after wrapping"
+                );
             }
         }
     }
