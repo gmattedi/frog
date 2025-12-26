@@ -24,7 +24,7 @@ pub fn write_state(state: &State, step: usize, file: &mut std::fs::File) {
     }
 }
 
-/// Write the current energy to the given file
+/// Write the current observables to the given file
 ///
 /// # Arguments
 /// * `state` - The current state of the system
@@ -33,12 +33,12 @@ pub fn write_state(state: &State, step: usize, file: &mut std::fs::File) {
 ///
 /// # Panics
 /// Panics if writing to the file fails
-pub fn write_energy(state: &State, step: usize, file: &mut std::fs::File) {
-    let observables = engine::get_energy(state);
+pub fn write_observables(state: &State, step: usize, file: &mut std::fs::File) {
+    let observables = engine::get_observables(state);
     writeln!(
         file,
-        "{}\t{}\t{}\t{}",
-        step, observables.kinetic, observables.potential, observables.total
+        "{}\t{}\t{}\t{}\t{}",
+        step, observables.kinetic, observables.potential, observables.total, observables.pos_std
     )
     .unwrap();
 }

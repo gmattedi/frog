@@ -39,7 +39,7 @@ pub fn init_system<R: rand::Rng + ?Sized>(
 ///
 /// # Returns
 /// The observables containing kinetic, potential, and total energy
-pub fn get_energy(state: &schema::State) -> schema::Observables {
+pub fn get_observables(state: &schema::State) -> schema::Observables {
     let mut kinetic = 0.0;
     let mut potential = 0.0;
     let n_particles = state.positions.ncols();
@@ -60,10 +60,20 @@ pub fn get_energy(state: &schema::State) -> schema::Observables {
         }
     }
 
+    // Stadard deviation of positions
+    let mean_pos = state.positions.column_mean();
+    let mut pos_var = 0.0;
+    for i in 0..n_particles {
+        let diff = state.positions.column(i) - &mean_pos;
+        pos_var += diff.norm_squared();
+    }
+    let pos_std = (pos_var / n_particles as f32).sqrt();
+
     schema::Observables {
         kinetic,
         potential,
         total: kinetic + potential,
+        pos_std,
     }
 }
 
@@ -137,7 +147,7 @@ pub fn simulation(
     let mut energy_file = std::fs::File::create(energy).unwrap();
 
     io::write_state(state, 0, &mut output_file);
-    io::write_energy(state, 0, &mut energy_file);
+    io::write_observables(state, 0, &mut energy_file);
 
     let pbar = indicatif::ProgressBar::new(n_steps as u64);
     pbar.set_style(
@@ -151,7 +161,7 @@ pub fn simulation(
     for i in 1..=n_steps {
         if (i >= burn_in) && (i % stride == 0) {
             io::write_state(state, i, &mut output_file);
-            io::write_energy(state, i, &mut energy_file);
+            io::write_observables(state, i, &mut energy_file);
         }
         step(state);
         pbar.inc(1);

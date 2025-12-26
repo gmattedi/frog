@@ -19,8 +19,10 @@ pub struct State {
 /// * `kinetic` - Total kinetic energy
 /// * `potential` - Total potential energy
 /// * `total` - Total energy
+/// * `pos_std` - Standard deviation of particle positions
 pub struct Observables {
     pub kinetic: f32,
     pub potential: f32,
     pub total: f32,
+    pub pos_std: f32,
 }
