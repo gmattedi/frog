@@ -1,13 +1,15 @@
 # Frog
 
 Basic single-core dynamics simulation with leap-frog integration, in Rust.
+The particle act under the Morse potential, and the simulation uses 
+Periodic Boundary Conditions (PBC)
 
 ## Usage
 
 ```
 cargo build --release
 target/release/frog \
-  -n 100 -s 11000 -b 1000 -d 100 \
+  -n 100 -s 10000 -d 100 \
   -t trajectory.txt -o observables.txt
 ```
 
