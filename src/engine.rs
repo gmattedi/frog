@@ -27,6 +27,16 @@ pub(crate) fn minimum_image(diff: &Vector3<f32>, box_size: f32) -> Vector3<f32> 
     )
 }
 
+/// Wrap all particle positions in-place into the [0, box_size) cubic box
+pub(crate) fn wrap_positions(state: &mut schema::State, box_size: f32) {
+    for i in 0..state.positions.ncols() {
+        for k in 0..3 {
+            let x = state.positions[(k, i)];
+            state.positions[(k, i)] = x - box_size * (x / box_size).floor();
+        }
+    }
+}
+
 /// Initialize the system with random positions, velocities, and masses
 ///
 /// # Arguments
@@ -190,6 +200,11 @@ pub fn simulate(state: &mut schema::State, config: &schema::Config) {
         has_header: false,
     };
 
+    // If periodic boundaries are enabled, wrap initial positions into the box
+    if config.periodic {
+        wrap_positions(state, config.box_size);
+    }
+
     let observables = get_observables(state, config.periodic, config.box_size);
     io::write_state(state, 0, &mut output_traj);
     io::write_observables(&observables, 0, &mut output_obs);
@@ -288,5 +303,36 @@ mod tests {
         assert!((mi[0] + 0.1).abs() < 1e-6);
         // -4.9 -> 0.1 after minimum image
         assert!((mi[2] - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn wrap_positions_initial_state() {
+        let mut state = init_system(&schema::InitConfig {
+            seed: 123,
+            n_particles: 10,
+            scale_pos: 1.0,
+            scale_vel: 0.1,
+            scale_mass: 1.0,
+        });
+        // Ensure some positions are negative initially
+        let mut has_negative = false;
+        for i in 0..state.positions.ncols() {
+            let x = state.positions[(0, i)];
+            if x < 0.0 {
+                has_negative = true;
+                break;
+            }
+        }
+        assert!(has_negative, "Sanity: initial positions should contain negative values");
+
+        // Wrap positions and verify all are in [0, box)
+        let box_size = 10.0;
+        wrap_positions(&mut state, box_size);
+        for i in 0..state.positions.ncols() {
+            for k in 0..3 {
+                let v = state.positions[(k, i)];
+                assert!(v >= 0.0 && v < box_size, "Position must be inside box after wrapping");
+            }
+        }
     }
 }
