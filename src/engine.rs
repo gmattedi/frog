@@ -56,13 +56,16 @@ pub fn get_observables(state: &schema::State) -> schema::Observables {
         let v = state.velocities.column(i);
         kinetic_energy += 0.5 * state.masses[i] * v.norm_squared();
 
-        // Potential energy: -G * m_i * m_j / r_ij
+        // Potential energy: Morse potential between pairs
         let p_i = state.positions.column(i);
         for j in (i + 1)..n_particles {
             let p_j = state.positions.column(j);
             let diff = p_j - p_i;
             let dist = diff.norm() + constants::EPS; // Avoid division by zero
-            potential_energy += -constants::G * state.masses[i] * state.masses[j] / dist;
+            // Morse potential: V(r) = D * ( (1 - exp(-a*(r - r0)))^2 - 1 )
+            let e = (-constants::MORSE_A * (dist - constants::MORSE_R0)).exp();
+            let v = constants::MORSE_D * ((1.0 - e) * (1.0 - e) - 1.0);
+            potential_energy += v;
         }
 
         let diff = state.positions.column(i) - &positions_mean;
@@ -97,12 +100,16 @@ pub fn step(state: &mut schema::State) {
             if i != j {
                 let p_j = state.positions.column(j);
                 let diff = p_j - p_i;
-                let dist_sq = diff.norm_squared() + constants::EPS;
+                let r = diff.norm() + constants::EPS;
 
-                // Acceleration = G * m_j * r_ij / |r_ij|^3
-                // Note: m_i cancels out because a = F / m_i
-                acceleration +=
-                    (constants::G * state.masses[j] / (dist_sq * dist_sq.sqrt())) * diff;
+                // Morse force magnitude: F = -dV/dr, where
+                // dV/dr = 2 * D * a * (1 - exp(-a*(r - r0))) * exp(-a*(r - r0))
+                let e = (-constants::MORSE_A * (r - constants::MORSE_R0)).exp();
+                let d_vdr = 2.0 * constants::MORSE_D * constants::MORSE_A * (1.0 - e) * e;
+                let force_mag = -d_vdr;
+
+                // Acceleration on particle i: a_i = F / m_i (direction along diff)
+                acceleration += (diff / r) * (force_mag / state.masses[i]);
             }
         }
 
