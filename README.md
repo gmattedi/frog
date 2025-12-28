@@ -9,7 +9,8 @@ Periodic Boundary Conditions (PBC)
 ```
 cargo build --release
 target/release/frog \
-  -n 100 -s 10000 -d 100 \
+  -n 100 -s 1000000 -d 1000 \
+  --box-size 10 --scale-pos 5 --scale-vel 0.1 \
   -t trajectory.txt -o observables.txt
 ```
 
